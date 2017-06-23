@@ -7,7 +7,7 @@ LDLIBS+=-lm
 CFLAGS += -std=c11
 
 BIN=ashti
-OBJS=ashti.o directories.o
+OBJS=ashti.o directories.o parsers.o
 
 .PHONY: clean debug profile
 

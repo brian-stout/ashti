@@ -15,11 +15,7 @@
  
 char response[] = "HTTP/1.1 200 OK\r\n"
 "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-"<!DOCTYPE html><html><head><title>Bye-bye baby bye-bye</title>"
-"<style>body { background-color: #111 }"
-"h1 { font-size:4cm; text-align: center; color: black;"
-" text-shadow: 0 0 2mm red}</style></head>"
-"<body><h1>Goodbye, world!</h1></body></html>\r\n";
+"\r\n";
 
 // The next 39 lines come from the day02/udp_server
 // The next 39 lines come from the day02/udp_server
@@ -76,14 +72,6 @@ int main(int argc, char *argv[])
         return EX_OSERR;
     }
     printf("Server Directory: %s\n", directory);
-    bool index_exists;
-    if(check_file_exists("www/index.html")) {
-        index_exists = true;
-        printf("DEBUG: Index does exist\n");
-    } else {
-        index_exists = false;
-        printf("DEBUG: Index does not exist \n");
-    }
 
     // Port numbers are in the range 1-65535, plus null byte
     char port_num[8];
@@ -149,7 +137,6 @@ int main(int argc, char *argv[])
             continue;
         }
 
-
         pid_t child = fork();
 
         // The child process handles the request
@@ -166,7 +153,6 @@ int main(int argc, char *argv[])
                         ip, sizeof(ip));
                 port = ntohs(((struct sockaddr_in *)&client)->sin_port);
             }
-
 
             close(sd);
             return run_server(remote);
