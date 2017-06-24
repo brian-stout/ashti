@@ -10,7 +10,7 @@ char not_found_404[] =      "HTTP/1.1 404 Not Found\r\n"
                             "Content-Type: text/html \r\n\r\n"
                             "\r\n";
 
-char not_found_text[] =     "<center><h1>404 Not found</h1></center> \r\n\r\n";
+char not_found_text[] =     "<center><h1>404 Not found</h1></center>\r\n\r\n";
 
 char server_error_500[] =   "HTTP/1.1 500 Internal Server Error\r\n"
                             "Content-Type: text/html \r\n\r\n"
@@ -89,7 +89,7 @@ void error_404(int remote)
 
     response = not_found_404;
     send(remote, response, strlen(response), 0);
-    //Checks to see if a premade 404 html page exists
+    //Checks to see if a premade 404 html page
     if(check_file_exists("error/404.html") == true) {
         fp = fopen("error/404.html", "r");
         fread(&buf, sizeof(buf), sizeof(char), fp);
