@@ -11,57 +11,38 @@
 
 #include <sys/socket.h>
 #include <sys/types.h>
-#include "directories.h"
-#include "parsers.h"
- 
-char OK_200[] = "HTTP/1.1 200 OK\r\n"
-"Content-Type: text/html\r\n\r\n"
-"\r\n";
+#include "files.h"
+#include "request.h"
+#include "response.h"
 
-char Not_Found_404[] = "HTTP/1.1 404 Not Found\r\n"
-"Content-Type: text/html \r\n\r\n"
-"\r\n";
-
-char Not_Found_text[] = "404 Not found \r\n\r\n";
-
-// The next 39 lines come from the day02/udp_server
-// The next 39 lines come from the day02/udp_server
-int run_server(int remote);
-
-/**** TODO LIST:
- *  1.  Find directory path of WWW_ROOT (Make sure relative paths work too)
- *  2.  Parse command given from html browser (error handle if bad)
- *  3.  Look for file called for or default to index html (404 if can't find)
- *  4.  Make the CGI-BIN work
-*****/
-
-
-const char * www_root_missing = "ERROR : www_root does not exist in the"
-                                " folder where the binary is located,"
-                                " or in the directory specified from a"
-                                " command line argument.  Either move\n"
-                                " the binary to a folder containing www_root"
-                                " or specify a path to a custom root directory.\n"
-                                "USAGE: ./ashti *<path to www_root>\n";
+const char * www_root_missing =     "ERROR : www_root does not exist in the"
+                                    " folder where the binary is located,"
+                                    " or in the directory specified from a"
+                                    " command line argument.  Either move\n"
+                                    " the binary to a folder containing www_root"
+                                    " or specify a path to a custom root directory.\n"
+                                    "USAGE: ./ashti *<path to www_root>\n";
 
 const char * directory_is_missing = "ERROR : the specified directory does"
                                     " not exist.\n"
                                     "USAGE: ./ashti <path to www_root>\n";
+-
+int run_server(int remote);
 
+// The next 39 lines come from the day02/udp_server
+// The next 39 lines come from the day02/udp_server
 int main(int argc, char *argv[])
 {
     errno = 0;
     char directory[256];
 
-    if (argc == 1) {
+    if(argc == 1) {
         if (check_dir_exists("www_root") == false) {
             fprintf(stderr, "%s\n", www_root_missing);
             return EX_USAGE;
         }
         chdir("www_root");
-    } else if (argc == 2) {
-        //TODO: Determine if absolute path or relative
-        //TODO: Look for www_root in binary's directory
+    } else if(argc == 2) {
         if (check_dir_exists(argv[1]) == false) {
             fprintf(stderr, "%s\n", directory_is_missing);
             return EX_USAGE;
@@ -69,7 +50,6 @@ int main(int argc, char *argv[])
             chdir(argv[1]);
         }
     } else {
-        //TODO: Error handle
         fprintf(stderr, "An unknown error occured : %d\n", errno);
         return EX_OSERR;
     }
@@ -91,7 +71,7 @@ int main(int argc, char *argv[])
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
 
-    const char * host = "tooldev";
+    const char * host = "localhost";
 
     int err = getaddrinfo(host, port_num, &hints, &results);
     if(err != 0) {
@@ -132,7 +112,6 @@ int main(int argc, char *argv[])
     ignorer.sa_handler = SIG_IGN;
     sigaction(SIGCHLD, &ignorer, NULL);
 
-    // Next 36 lines also pulled from say02/udp_server
     for(;;) {
         struct sockaddr_storage client;
         socklen_t client_sz = sizeof(client);
@@ -178,53 +157,51 @@ int run_server(int remote)
 {
     char read_buf[512];
     //TODO: FSEEK FP stream to determine size and malloc memory
+    //      It's fine with a normal buffer for now, just because only do two things
+    //      with the request header
     char write_buf[256];
     char * response = NULL;
     memset(&write_buf, '\0', sizeof(write_buf));
-
     read(remote, read_buf, sizeof(read_buf));
-    char *token;
+
+    char *token = NULL;
 
     token = strtok(read_buf, " ");
     int switch_int = determine_request(token);
     FILE * fp = NULL;
     bool cgi_bin_request = false;
 
+    int err = 0;
+
     switch(switch_int) {
         case 1:
-            printf("GET COMMAND\n");
             token = strtok(NULL, " ");
-            fp = GET_response(token, &cgi_bin_request);
+            if(detect_path_traversal(token) == false) {
+                error_400(remote);
+                break;
+            }
+            fp = get_request(token, &cgi_bin_request);
+            if(cgi_bin_request == true) {
+                err = cgi_response(token, remote);
+                if (err < 0) {
+                    error_404(remote);
+                }
+                break;
+            }
+            if(fp) {
+                err = get_response(fp, remote);
+                fclose(fp);
+            } else {
+                error_404(remote);
+            }
             break;
         default:
-            printf("505 Error?\n");
-    }
-    if(fp) {
-        response = OK_200;
-        fread(&write_buf, sizeof(write_buf), sizeof(char), fp);
-        fclose(fp);
-        send(remote, response, strlen(response), 0);
-        send(remote, write_buf, strlen(write_buf), 0);
-        //write_buf[strlen(write_buf) -1] = '\0';
-    } else if(cgi_bin_request == true) {
-        printf("DEBUG: Popen stuff here \n");
-    } else {
-        response = Not_Found_404;
-        send(remote, response, strlen(response), 0);
-        if(check_file_exists("error/404.html") == true) {
-            printf("Debug: Error file!\n");
-            fp = fopen("error/404.html", "r");
-            fread(&write_buf, sizeof(write_buf), sizeof(char), fp);
-            fclose(fp);
-            send(remote, write_buf, strlen(write_buf), 0);
-        } else {
-            printf("DEBUG: No error file\n");
-            response = Not_Found_text;
-            send(remote, response, strlen(response), 0);      
-        }
+            error_500(remote);
     }
 
     close(remote);
     return 0;
 }
+
+
 
