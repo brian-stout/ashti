@@ -8,6 +8,7 @@ int determine_request(char * request)
     for(int i = 0; header_code[i] != NULL; i++)
     {
         int cmp = 0;
+        //Checks to see if string is the same and returns that index if it is
         cmp = strncmp(header_code[i], request, strlen(request));
         if (cmp == 0) {
             return i;
@@ -20,8 +21,10 @@ FILE * get_request(char * request, bool * cgi_bin_request)
 {
     FILE * fp = NULL;
     char buf[256];
+    //Memset to avoid an init error from valgrind
     memset(&buf, '\0', sizeof(buf));
 
+    //If it's just a / than open up index.html by default
     if(request[0] == '/' && request[1] == '\0') {
         fp = fopen("www/index.html", "r");
         if(fp) {
@@ -31,31 +34,16 @@ FILE * get_request(char * request, bool * cgi_bin_request)
             return NULL;
         }
     } else {
+        //If the first 7 letters are cgi-bin send the request to the cgi_response function
         if(strncmp("cgi-bin", request+1, 7) == 0){
             *cgi_bin_request = true;
             return NULL;
         } else {
+            //If everthing else make the path relative from the www folder and 
+            //  open a file pointer to that path
             snprintf(buf, sizeof(buf), "www%s", request);
             fp = fopen(buf, "r");
         }
         return fp;
     }
 }
-
-
-/* STEPS
-    1. Get code for what request it is, return to a switch
-    2. Switch runs proper commands, token needs to get passed so it can continue down
-        the request
-
-    GET request
-    1. Process GET Command, get token of file it wants to GET
-    2. Determine if that file exists in CGI_BIN or WWW
-    3. If it does not return 404
-    4. If it does return a file pointer
-    5. Load file pointer binary into an array
-    6. Send all data back to the browser
-    7. TODO: If in CGI-BIN run script, read the stdout into an array
-    8.  Send that garbage back to the browser
-*/
-

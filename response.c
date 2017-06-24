@@ -27,11 +27,14 @@ char text_request_text[] =  "<center><h1>400 Bad request</h1></center>\r\n\r\n";
 int get_response(FILE * fp, int remote)
 {
     char buf[512];
+    //Init buf to avoid valgrind error
     memset(&buf, '\0', sizeof(buf));
     char * response = NULL;
   
     response = OK_200;
+    //Send the basic response
     send(remote, response, strlen(response), 0);
+    //Send the webpage back in chunks
     while(fgets(buf, sizeof(buf), fp) != NULL) {
         send(remote, buf, strlen(buf), 0);
     }
@@ -41,28 +44,33 @@ int get_response(FILE * fp, int remote)
 
 int cgi_response(char * token, int remote)
 {
-    //TODO: Cgi_error respons is 404
-
-    char buf[256];
+    char buf[512];
+    //Init buf to avoid valgrind error
     memset(&buf, '\0', sizeof(buf));
     char * response = NULL;
 
     FILE * process = NULL;
-    printf("CGI DEBUG: token: %s\n", token);
 
+    //Avoid the first / so the program knows it's a relative path
     process = popen(token+1, "r");
 
     if(process) {
-        printf("Successfully opened process!\n");
+        //Send initial response
         response = OK_200_cgi;
         send(remote, response, strlen(response), 0);
+        //Send the resulting output from popen's stdout to the client
         while(fgets(buf, sizeof(buf), process) != NULL) {
             send(remote, buf, strlen(buf), 0);
         }
         pclose(process);
+
+        //Checks to see if anything ever existed in buf.  Kind of a hackey way to determine
+        // if popen actually worked, but I can't find another solution since
+        // poopen doesn't actually error when it can't find the process, the shell does
         if (buf[0] == '\0') {
             return -1;
         }
+    //Shouldn't happen
     } else {
         printf("POPEN ERROR: Fork or Malloc Failed\n");
         return 1;
@@ -81,6 +89,7 @@ void error_404(int remote)
 
     response = not_found_404;
     send(remote, response, strlen(response), 0);
+    //Checks to see if a premade 404 html page exists
     if(check_file_exists("error/404.html") == true) {
         fp = fopen("error/404.html", "r");
         fread(&buf, sizeof(buf), sizeof(char), fp);
@@ -88,7 +97,7 @@ void error_404(int remote)
         send(remote, buf, strlen(buf), 0);
     } else {
         response = not_found_text;
-        send(remote, response, strlen(response), 0);      
+        send(remote, response, strlen(response), 0);
    }
 }
 
@@ -109,7 +118,7 @@ void error_500(int remote)
         send(remote, buf, strlen(buf), 0);
     } else {
         response = server_error_text;
-        send(remote, response, strlen(response), 0);      
+        send(remote, response, strlen(response), 0);
    }
 }
 
@@ -130,6 +139,6 @@ void error_400(int remote)
         send(remote, buf, strlen(buf), 0);
     } else {
         response = text_request_text;
-        send(remote, response, strlen(response), 0);      
+        send(remote, response, strlen(response), 0);
    }
 }

@@ -1,4 +1,3 @@
-// This whole file comes from day03/unitcp.c
 #define _GNU_SOURCE
 
 #include <netdb.h>
@@ -27,33 +26,40 @@ const char * directory_is_missing = "ERROR : the specified directory does"
                                     " not exist.\n"
                                     "USAGE: ./ashti <path to www_root>\n";
 
+/** run_server() handles the HTTP requests and response in the server portion.  It's the
+*       main function spawned by the fork
+*/
 int run_server(int remote);
 
-// The next 39 lines come from the day02/udp_server
-// The next 39 lines come from the day02/udp_server
 int main(int argc, char *argv[])
 {
     errno = 0;
     char directory[256];
 
+    //If there's no argument we assume the working directory is www_root
     if(argc == 1) {
         if (check_dir_exists("www_root") == false) {
             fprintf(stderr, "%s\n", www_root_missing);
             return EX_USAGE;
         }
+        //Changes the working directory to simplify path operations
         chdir("www_root");
+    //If there's an argument change that to the current directory
     } else if(argc == 2) {
+        //Make sure it exists before switching
         if (check_dir_exists(argv[1]) == false) {
             fprintf(stderr, "%s\n", directory_is_missing);
             return EX_USAGE;
         } else {
             chdir(argv[1]);
         }
+    //Too many arguments
     } else {
-        fprintf(stderr, "An unknown error occured : %d\n", errno);
-        return EX_OSERR;
+        fprintf(stderr, "ERROR USAGE: ./ashti *<working directory> : %d\n", errno);
+        return EX_USAGE;
     }
 
+    //Get the current directory in a path file so we can use it later if need be
     getcwd(directory, sizeof(directory));
     if (directory == NULL) {
         fprintf(stderr, "Could not get current working directory error: %d\n", errno);
@@ -61,6 +67,10 @@ int main(int argc, char *argv[])
     }
     printf("Server Directory: %s\n", directory);
 
+    ///COPIED CODE////
+    ///SOURCE: DAY 3 MULTIPLEX TCP SERVER
+    //AUTHOR: LIAM
+    //DESCRIPTION: Liam's multiplex tcp server in class
     // Port numbers are in the range 1-65535, plus null byte
     char port_num[8];
     snprintf(port_num, sizeof(port_num), "%hu", getuid());
@@ -100,7 +110,7 @@ int main(int argc, char *argv[])
     }
     freeaddrinfo(results);
 
-    // 5 is the usual backlog
+    //5 is the usual backlog
     err = listen(sd, 5);
     if(err < 0) {
         perror("Could not listen");
@@ -126,9 +136,8 @@ int main(int argc, char *argv[])
 
         pid_t child = fork();
 
-        // The child process handles the request
+        //The child process handles the request
         if(child == 0) {
-
             if(client.ss_family == AF_INET6) {
                 inet_ntop(client.ss_family,
                         &((struct sockaddr_in6 *)&client)->sin6_addr,
@@ -142,6 +151,7 @@ int main(int argc, char *argv[])
             }
 
             close(sd);
+            //The actual server receive and send logic
             return run_server(remote);
         }
         else if(child < 0) {
@@ -151,36 +161,51 @@ int main(int argc, char *argv[])
 
         close(remote);
     }
+    ////END OF COPIED CODE/////
 }
 
 int run_server(int remote)
 {
     char read_buf[512];
     //TODO: FSEEK FP stream to determine size and malloc memory
-    //      It's fine with a normal buffer for now, just because only do two things
+    //      It's fine with a normal buffer for now, just because we only do two things
     //      with the request header
     char write_buf[256];
     char * response = NULL;
+
+    //Memset to avoid an initialization error in valgrind (and probably make it safer.)
     memset(&write_buf, '\0', sizeof(write_buf));
     read(remote, read_buf, sizeof(read_buf));
 
+    //Set up token for strtok
     char *token = NULL;
 
+    //Grab first word of STRTOK, should be an HTTP request code
     token = strtok(read_buf, " ");
+
+    //Send the token to a switch to grab a digit value from it
     int switch_int = determine_request(token);
     FILE * fp = NULL;
+
+    //Bool value that one of the functions will use to notify us that
+    //  The user actually wants a program from the cgi_bin
     bool cgi_bin_request = false;
 
     int err = 0;
 
     switch(switch_int) {
         case 1:
+            //Grabbing the second line from the GET request
             token = strtok(NULL, " ");
-            if(detect_path_traversal(token) == false) {
+            //Making sure there's no path_traversal shenanigans
+            if(detect_path_traversal(token) == true) {
+                //If there is, send 400 error for bad request
                 error_400(remote);
                 break;
             }
+            //Process the git reqest
             fp = get_request(token, &cgi_bin_request);
+            //If there is a cgi_bin, do that first
             if(cgi_bin_request == true) {
                 err = cgi_response(token, remote);
                 if (err < 0) {
@@ -188,9 +213,11 @@ int run_server(int remote)
                 }
                 break;
             }
+            //If get_request returned a file pointer then, process the response
             if(fp) {
                 err = get_response(fp, remote);
                 fclose(fp);
+            //If it didn't it found no file
             } else {
                 error_404(remote);
             }
