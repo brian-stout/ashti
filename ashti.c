@@ -12,10 +12,17 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include "directories.h"
+#include "parsers.h"
  
-char response[] = "HTTP/1.1 200 OK\r\n"
-"Content-Type: text/html; charset=UTF-8\r\n\r\n"
+char OK_200[] = "HTTP/1.1 200 OK\r\n"
+"Content-Type: text/html\r\n\r\n"
 "\r\n";
+
+char Not_Found_404[] = "HTTP/1.1 404 Not Found\r\n"
+"Content-Type: text/html \r\n\r\n"
+"\r\n";
+
+char Not_Found_text[] = "404 Not found \r\n\r\n";
 
 // The next 39 lines come from the day02/udp_server
 // The next 39 lines come from the day02/udp_server
@@ -27,6 +34,7 @@ int run_server(int remote);
  *  3.  Look for file called for or default to index html (404 if can't find)
  *  4.  Make the CGI-BIN work
 *****/
+
 
 const char * www_root_missing = "ERROR : www_root does not exist in the"
                                 " folder where the binary is located,"
@@ -168,12 +176,53 @@ int main(int argc, char *argv[])
 
 int run_server(int remote)
 {
-    char buf[512];
+    char read_buf[512];
+    //TODO: FSEEK FP stream to determine size and malloc memory
+    char write_buf[256];
+    char * response = NULL;
+    memset(&write_buf, '\0', sizeof(write_buf));
 
+    read(remote, read_buf, sizeof(read_buf));
+    char *token;
 
-    read(remote, buf, sizeof(buf));
-    send(remote, response, strlen(response), 0);
-    send(remote, buf, strlen(buf), 0);
+    token = strtok(read_buf, " ");
+    int switch_int = determine_request(token);
+    FILE * fp = NULL;
+    bool cgi_bin_request = false;
+
+    switch(switch_int) {
+        case 1:
+            printf("GET COMMAND\n");
+            token = strtok(NULL, " ");
+            fp = GET_response(token, &cgi_bin_request);
+            break;
+        default:
+            printf("505 Error?\n");
+    }
+    if(fp) {
+        response = OK_200;
+        fread(&write_buf, sizeof(write_buf), sizeof(char), fp);
+        fclose(fp);
+        send(remote, response, strlen(response), 0);
+        send(remote, write_buf, strlen(write_buf), 0);
+        //write_buf[strlen(write_buf) -1] = '\0';
+    } else if(cgi_bin_request == true) {
+        printf("DEBUG: Popen stuff here \n");
+    } else {
+        response = Not_Found_404;
+        send(remote, response, strlen(response), 0);
+        if(check_file_exists("error/404.html") == true) {
+            printf("Debug: Error file!\n");
+            fp = fopen("error/404.html", "r");
+            fread(&write_buf, sizeof(write_buf), sizeof(char), fp);
+            fclose(fp);
+            send(remote, write_buf, strlen(write_buf), 0);
+        } else {
+            printf("DEBUG: No error file\n");
+            response = Not_Found_text;
+            send(remote, response, strlen(response), 0);      
+        }
+    }
 
     close(remote);
     return 0;
