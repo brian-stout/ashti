@@ -29,7 +29,7 @@ const char * directory_is_missing = "ERROR : the specified directory does"
 /** run_server() handles the HTTP requests and response in the server portion.  It's the
 *       main function spawned by the fork
 */
-int run_server(int remote);
+int run_server(int remote, char * ip, int port);
 
 int main(int argc, char *argv[])
 {
@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
 
     struct addrinfo *results;
     struct addrinfo hints = {0};
-    hints.ai_family = AF_INET;
+    hints.ai_family = PF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
     const char * host = "localhost";
@@ -152,7 +152,8 @@ int main(int argc, char *argv[])
 
             close(sd);
             //The actual server receive and send logic
-            return run_server(remote);
+            printf("%s:%hu is connected\n", ip, port);
+            return run_server(remote, ip, port);
         }
         else if(child < 0) {
             perror("Could not spawn worker");
@@ -164,14 +165,13 @@ int main(int argc, char *argv[])
     ////END OF COPIED CODE/////
 }
 
-int run_server(int remote)
+int run_server(int remote, char * ip, int port)
 {
     char read_buf[512];
     //TODO: FSEEK FP stream to determine size and malloc memory
     //      It's fine with a normal buffer for now, just because we only do two things
     //      with the request header
     char write_buf[256];
-    char * response = NULL;
 
     //Memset to avoid an initialization error in valgrind (and probably make it safer.)
     memset(&write_buf, '\0', sizeof(write_buf));
@@ -195,11 +195,14 @@ int run_server(int remote)
 
     switch(switch_int) {
         case 1:
+            printf("%s:%hu SENT GET request\n", ip, port);
             //Grabbing the second line from the GET request
             token = strtok(NULL, " ");
             //Making sure there's no path_traversal shenanigans
             if(detect_path_traversal(token) == true) {
                 //If there is, send 400 error for bad request
+                printf("%s:%hu possible path traversal detected - %s \t", ip, port, token);
+                printf("Sending error_400\n");
                 error_400(remote);
                 break;
             }
@@ -207,22 +210,27 @@ int run_server(int remote)
             fp = get_request(token, &cgi_bin_request);
             //If there is a cgi_bin, do that first
             if(cgi_bin_request == true) {
+                printf("%s:%hu Making CGI Request - %s\n", ip, port, token);
                 err = cgi_response(token, remote);
                 if (err < 0) {
+                    printf("%s:%hu ERROR_404\n", ip, port);
                     error_404(remote);
                 }
                 break;
             }
             //If get_request returned a file pointer then, process the response
             if(fp) {
+                printf("%s:%hu Making page request%s\n", ip, port, token);
                 err = get_response(fp, remote);
                 fclose(fp);
             //If it didn't it found no file
             } else {
+                printf("%s:%hu ERROR_404\n", ip, port);
                 error_404(remote);
             }
             break;
         default:
+            printf("%s:%hu Received internal server error 500\n", ip, port);
             error_500(remote);
     }
 
