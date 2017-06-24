@@ -51,6 +51,16 @@ int cgi_response(char * token, int remote)
 
     FILE * process = NULL;
 
+    //Makes sure a file exists before attempting to popen it
+    //  This is not a good solution to check to see if popen actually opened
+    //  a process, since it might not be executable.  But unfortunately
+    //  when popen can't open a process it causes a shell error
+    //  and I have no idea how to capture that
+    if(check_file_exists(token+1) == false) {
+        printf("Missing CGI script\n");
+        return -1;
+    }
+
     //Avoid the first / so the program knows it's a relative path
     process = popen(token+1, "r");
 
